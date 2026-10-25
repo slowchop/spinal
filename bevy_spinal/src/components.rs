@@ -412,12 +412,21 @@ pub(crate) struct TrackNamespace(AtomicU64);
 
 impl TrackNamespace {
     fn issue_generation(&self) -> u64 {
-        self.0
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-                current.checked_add(1)
-            })
-            .map(|previous| previous + 1)
-            .expect("track declaration generation capacity exhausted")
+        // An explicit compare-exchange loop: `fetch_update` is deprecated on
+        // newer stable (renamed `try_update`), which the 1.89 MSRV lacks.
+        let mut current = self.0.load(Ordering::Relaxed);
+        loop {
+            let next = current
+                .checked_add(1)
+                .expect("track declaration generation capacity exhausted");
+            match self
+                .0
+                .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
+            {
+                Ok(_previous) => return next,
+                Err(actual) => current = actual,
+            }
+        }
     }
 }
 

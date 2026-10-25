@@ -28,4 +28,7 @@ pub use components::{
     SpinalTrackState, SpinalTrackStates, TrackReorderError, WorldToSkeletonPositionError,
 };
 pub use plugin::{SpinalPlugin, SpinalSet};
-pub use runtime::{SpinalAnimationEvent, SpinalIssue, SpinalIssueKind, SpinalRuntimeConfig};
+pub use runtime::{
+    SpinalAnimationEvent, SpinalFrame, SpinalIssue, SpinalIssueKind, SpinalRuntimeConfig,
+    SpinalTriangle,
+};

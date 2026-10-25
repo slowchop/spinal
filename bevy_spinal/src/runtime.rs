@@ -424,14 +424,79 @@ pub(crate) struct SpinalVertex {
     pub(crate) uv: Vec2,
 }
 
+/// The geometry an instance's renderer draws for its most recent solved
+/// frame. Added to every prepared [`SpinalInstance`](crate::SpinalInstance)
+/// and read-only outside this crate: use it for hit testing or other
+/// game-side queries of the drawn shape.
 #[derive(Component, Debug, Default)]
-pub(crate) struct SpinalFrame {
+pub struct SpinalFrame {
     pub(crate) revision: u64,
     pub(crate) draws: Vec<SpinalDraw>,
     pub(crate) vertices: Vec<SpinalVertex>,
     pub(crate) indices: Vec<u32>,
     pub(crate) issue_points: Vec<Vec2>,
     pub(crate) ready: bool,
+}
+
+/// One drawn triangle of a [`SpinalFrame`], in unflipped skeleton space.
+///
+/// Apply the instance's [`SpinalAppearance`](crate::SpinalAppearance) facing
+/// and `GlobalTransform` to place it in the world, as the renderer does.
+/// `uvs` are normalised texture coordinates on the atlas page
+/// `page_ordinal`, which [`SpinalAsset::page`](crate::SpinalAsset::page)
+/// resolves to its Bevy image.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpinalTriangle {
+    /// Atlas page ordinal of the texture the triangle samples.
+    pub page_ordinal: usize,
+    /// Corner positions in unflipped skeleton space.
+    pub positions: [Vec2; 3],
+    /// Corner texture coordinates, normalised to the atlas page.
+    pub uvs: [Vec2; 3],
+}
+
+impl SpinalFrame {
+    /// Increases whenever the frame's geometry is rebuilt.
+    #[must_use]
+    pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// Whether the frame holds complete drawable geometry. The renderer
+    /// draws nothing for an instance whose frame is not ready.
+    #[must_use]
+    pub const fn is_ready(&self) -> bool {
+        self.ready
+    }
+
+    /// Every triangle the renderer draws for this frame, in draw order.
+    /// A draw whose index or vertex ranges are inconsistent is skipped
+    /// whole, as the renderer skips the frame.
+    pub fn triangles(&self) -> impl Iterator<Item = SpinalTriangle> + '_ {
+        self.draws.iter().flat_map(move |draw| {
+            let vertices = self.vertices.get(draw.vertices.clone());
+            let indices = self.indices.get(draw.indices.clone());
+            let valid = match (vertices, indices) {
+                (Some(_vertices), Some(indices)) => {
+                    indices.len() % 3 == 0
+                        && indices
+                            .iter()
+                            .all(|index| draw.vertices.contains(&(*index as usize)))
+                }
+                _missing => false,
+            };
+            let indices = if valid { indices.unwrap_or(&[]) } else { &[] };
+            indices.as_chunks::<3>().0.iter().map(move |corners| {
+                let vertex = |corner: usize| self.vertices[corners[corner] as usize];
+                let (a, b, c) = (vertex(0), vertex(1), vertex(2));
+                SpinalTriangle {
+                    page_ordinal: draw.page_ordinal,
+                    positions: [a.position, b.position, c.position],
+                    uvs: [a.uv, b.uv, c.uv],
+                }
+            })
+        })
+    }
 }
 
 #[allow(clippy::type_complexity)]
@@ -1645,6 +1710,102 @@ fn emit_new_issues(
     }
     previous.clear();
     previous.extend(current.iter().map(|issue| issue.fingerprint.clone()));
+}
+
+#[cfg(test)]
+mod frame_triangle_tests {
+    use super::*;
+
+    fn vertex(x: f32, y: f32) -> SpinalVertex {
+        SpinalVertex {
+            position: Vec2::new(x, y),
+            uv: Vec2::new(x / 10.0, y / 10.0),
+        }
+    }
+
+    fn frame() -> SpinalFrame {
+        SpinalFrame {
+            revision: 7,
+            draws: vec![
+                // A quad on page 0: two triangles sharing an edge.
+                SpinalDraw {
+                    page_ordinal: 0,
+                    vertices: 0..4,
+                    indices: 0..6,
+                    color: [1.0; 4],
+                },
+                // One triangle on page 1; its indices are frame-global.
+                SpinalDraw {
+                    page_ordinal: 1,
+                    vertices: 4..7,
+                    indices: 6..9,
+                    color: [1.0; 4],
+                },
+            ],
+            vertices: vec![
+                vertex(0.0, 0.0),
+                vertex(1.0, 0.0),
+                vertex(1.0, 1.0),
+                vertex(0.0, 1.0),
+                vertex(5.0, 5.0),
+                vertex(6.0, 5.0),
+                vertex(5.0, 6.0),
+            ],
+            indices: vec![0, 1, 2, 0, 2, 3, 4, 5, 6],
+            issue_points: Vec::new(),
+            ready: true,
+        }
+    }
+
+    #[test]
+    fn triangles_follow_draw_order_with_positions_and_uvs() {
+        let frame = frame();
+        assert_eq!(frame.revision(), 7);
+        assert!(frame.is_ready());
+        let triangles: Vec<SpinalTriangle> = frame.triangles().collect();
+        assert_eq!(triangles.len(), 3);
+        assert_eq!(triangles[0].page_ordinal, 0);
+        assert_eq!(
+            triangles[1].positions,
+            [
+                Vec2::new(0.0, 0.0),
+                Vec2::new(1.0, 1.0),
+                Vec2::new(0.0, 1.0)
+            ]
+        );
+        assert_eq!(triangles[2].page_ordinal, 1);
+        assert_eq!(
+            triangles[2].uvs,
+            [
+                Vec2::new(0.5, 0.5),
+                Vec2::new(0.6, 0.5),
+                Vec2::new(0.5, 0.6)
+            ]
+        );
+    }
+
+    #[test]
+    fn inconsistent_draw_is_skipped_whole() {
+        let mut frame = frame();
+        // An index outside its draw's vertex range.
+        frame.indices[1] = 5;
+        let triangles: Vec<SpinalTriangle> = frame.triangles().collect();
+        assert_eq!(triangles.len(), 1, "only the valid page 1 draw remains");
+        assert_eq!(triangles[0].page_ordinal, 1);
+        frame.draws[1].indices = 6..8;
+        assert_eq!(
+            frame.triangles().count(),
+            0,
+            "a partial triangle is not drawn"
+        );
+    }
+
+    #[test]
+    fn default_frame_is_not_ready_and_empty() {
+        let frame = SpinalFrame::default();
+        assert!(!frame.is_ready());
+        assert_eq!(frame.triangles().count(), 0);
+    }
 }
 
 #[cfg(test)]
