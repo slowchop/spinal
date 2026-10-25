@@ -486,7 +486,7 @@ impl SpinalFrame {
                 _missing => false,
             };
             let indices = if valid { indices.unwrap_or(&[]) } else { &[] };
-            indices.chunks_exact(3).map(move |corners| {
+            indices.as_chunks::<3>().0.iter().map(move |corners| {
                 let vertex = |corner: usize| self.vertices[corners[corner] as usize];
                 let (a, b, c) = (vertex(0), vertex(1), vertex(2));
                 SpinalTriangle {
