@@ -1297,3 +1297,59 @@ fn assert_angle_near(actual: f32, expected: f32) {
         "expected {expected} degrees, got {actual} degrees"
     );
 }
+
+#[test]
+fn a_mesh_shown_by_a_skin_switch_is_skinned_on_the_next_solve() {
+    let report = spinal::load_json(
+        br#"{
+          "skeleton":{"spine":"4.3.23"},
+          "bones":[{"name":"root"},{"name":"body","parent":"root","x":100}],
+          "slots":[{"name":"body-slot","bone":"body","attachment":"body"}],
+          "skins":[
+            {"name":"tabby","attachments":{"body-slot":{"body":{
+              "type":"mesh","uvs":[0,0,1,0,1,1],"triangles":[0,1,2],
+              "vertices":[0,0,1,0,1,1],"hull":3
+            }}}},
+            {"name":"tuxedo","attachments":{"body-slot":{"body":{
+              "type":"mesh","uvs":[0,0,1,0,1,1],"triangles":[0,1,2],
+              "vertices":[5,0,6,0,6,1],"hull":3
+            }}}}
+          ]
+        }"#,
+        b"page.png\n\tsize: 100, 100\nbody\n\tbounds: 0, 0, 10, 10\n",
+    )
+    .expect("two-skin mesh fixture loads");
+    let asset = report.into_asset();
+    let mut skeleton = Skeleton::new(Arc::clone(&asset));
+    let positions = |skeleton: &mut Skeleton| {
+        let frame = skeleton.editable_pose().solve();
+        match frame.draw_items().next().expect("mesh is visible") {
+            spinal::DrawItemRef::Mesh(mesh) => mesh.positions().to_vec(),
+            _other => panic!("the body attachment is a mesh"),
+        }
+    };
+
+    skeleton
+        .set_skin_layers(&[asset.skin_id("tabby").expect("tabby exists")])
+        .expect("skin belongs to asset");
+    assert_eq!(
+        positions(&mut skeleton),
+        [
+            spinal::glam::Vec2::new(100.0, 0.0),
+            spinal::glam::Vec2::new(101.0, 0.0),
+            spinal::glam::Vec2::new(101.0, 1.0),
+        ]
+    );
+
+    skeleton
+        .set_skin_layers(&[asset.skin_id("tuxedo").expect("tuxedo exists")])
+        .expect("skin belongs to asset");
+    assert_eq!(
+        positions(&mut skeleton),
+        [
+            spinal::glam::Vec2::new(105.0, 0.0),
+            spinal::glam::Vec2::new(106.0, 0.0),
+            spinal::glam::Vec2::new(106.0, 1.0),
+        ]
+    );
+}

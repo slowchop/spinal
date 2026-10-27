@@ -134,8 +134,15 @@ impl Skeleton {
         skeleton
     }
 
+    /// Skins only the mesh each slot currently shows: that is all the draw
+    /// path reads, and an asset with many skins (one linked mesh set per
+    /// skin) would otherwise skin every skin's meshes every frame.
     pub(crate) fn update_mesh_world_positions(&mut self) {
-        for attachment_index in 0..self.asset.attachments().len() {
+        for slot_index in 0..self.pose.slots.len() {
+            let Some(attachment_index) = self.pose.slots[slot_index].attachment else {
+                continue;
+            };
+            let attachment_index = attachment_index as usize;
             let range = self.mesh_vertex_ranges[attachment_index].clone();
             if range.is_empty() {
                 continue;
