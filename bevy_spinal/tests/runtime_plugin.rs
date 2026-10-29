@@ -1746,3 +1746,48 @@ fn manual_asset_with(world: &mut bevy::prelude::World, json: &[u8], atlas: &[u8]
     )
     .expect("manual page matches the linked atlas")
 }
+
+#[test]
+fn recorded_instance_retains_its_geometry_across_animation_and_asset_changes() {
+    use bevy_spinal::{SpinalFrame, SpinalRecordedFrame};
+    let mut app = headless_app();
+    let asset = add_asset(&mut app, JSON);
+    let entity = app
+        .world_mut()
+        .spawn((SpinalInstance::new(asset), SpinalAnimator::looping("idle")))
+        .id();
+    app.update();
+    let original = app
+        .world()
+        .entity(entity)
+        .get::<SpinalFrame>()
+        .unwrap()
+        .snapshot();
+    app.world_mut()
+        .entity_mut(entity)
+        .insert(SpinalRecordedFrame);
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(
+        app.world()
+            .entity(entity)
+            .get::<SpinalFrame>()
+            .unwrap()
+            .snapshot(),
+        original
+    );
+    let replacement = add_asset(&mut app, JSON);
+    app.world_mut()
+        .entity_mut(entity)
+        .insert(SpinalInstance::new(replacement));
+    app.update();
+    assert_eq!(
+        app.world()
+            .entity(entity)
+            .get::<SpinalFrame>()
+            .unwrap()
+            .snapshot(),
+        original
+    );
+}

@@ -8,6 +8,7 @@ use bevy::{
         entity::Entity,
         lifecycle::RemovedComponents,
         message::{Message, MessageWriter},
+        query::Without,
         resource::Resource,
         system::{Commands, Query, Res},
     },
@@ -517,6 +518,7 @@ pub(crate) fn prepare_instances(
             Option<&SpinalSelection>,
             Option<&SpinalRuntime>,
         ),
+        Without<crate::SpinalRecordedFrame>,
     >,
 ) {
     for (entity, instance, mut state, mut playback, mut tracks, selection, runtime) in
@@ -605,6 +607,7 @@ pub(crate) fn update_instances(
             &mut SpinalRuntime,
             &mut SpinalFrame,
         ),
+        Without<crate::SpinalRecordedFrame>,
     >,
 ) {
     let wall_delta = time.as_deref().map_or(Duration::ZERO, Time::delta);

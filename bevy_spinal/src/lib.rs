@@ -5,6 +5,7 @@
 mod asset;
 mod components;
 mod plugin;
+mod recorded;
 mod runtime;
 
 #[cfg(feature = "render")]
@@ -28,6 +29,10 @@ pub use components::{
     SpinalTrackState, SpinalTrackStates, TrackReorderError, WorldToSkeletonPositionError,
 };
 pub use plugin::{SpinalPlugin, SpinalSet};
+pub use recorded::{
+    InvalidRecordedFrame, SpinalFrameSnapshot, SpinalRecordedDraw, SpinalRecordedFrame,
+    SpinalRecordedVertex,
+};
 pub use runtime::{
     SpinalAnimationEvent, SpinalFrame, SpinalIssue, SpinalIssueKind, SpinalRuntimeConfig,
     SpinalTriangle,

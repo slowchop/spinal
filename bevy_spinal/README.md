@@ -16,6 +16,20 @@ External checksummed Spineboy Essential and Professional exports from 4.3.23
 pass the compound loader. Complete supported-profile conformance and
 Loafstead's real asset-backed canary remain pending project-owned cat exports.
 
+## Recorded presentation
+
+`SpinalFrame::snapshot()` exports the solved indexed geometry, ordered draws,
+slot colours and diagnostic points. `SpinalFrame::set_recorded()` validates and
+imports it atomically. Add `SpinalRecordedFrame` beside `SpinalInstance` to keep
+the animation systems from replacing a recorded frame. Rendering still uses the
+ordinary pipeline; the application must also record and restore the trusted
+asset identity, appearance, transform and visibility.
+
+This is an in-memory presentation API, not a wire format or an animation save.
+Callers must bound input allocation before constructing snapshots. Import limits
+each frame to 16,384 vertices, 65,536 indices, 512 draws and 256 diagnostic points,
+and rejects nonfinite geometry, invalid triangle ranges and invalid colours.
+
 ## Quick start
 
 Add Bevy's asset plugin before `SpinalPlugin`, as the normal Bevy plugin
